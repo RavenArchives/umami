@@ -236,16 +236,11 @@ export default withNextIntl({
   },
   basePath,
   output: 'standalone',
-  // geoip-country reads its own package.json + .dat databases from disk at
-  // runtime. Mark it external so it's loaded from node_modules instead of
-  // bundled by Turbopack (which dropped its files), and force its whole
-  // directory into the standalone/Vercel bundle so those reads resolve.
-  serverExternalPackages: ['geoip-country'],
+  // Force our vendored GeoLite2-Country DB (committed under geo/) into the
+  // standalone/Vercel bundle. These are real repo files (no node_modules
+  // symlinks), so tracing them is safe. detect.ts reads geo/GeoLite2-Country.mmdb.
   outputFileTracingIncludes: {
-    '**/*': [
-      './node_modules/.pnpm/geoip-country@*/node_modules/geoip-country/**',
-      './node_modules/geoip-country/**',
-    ],
+    '**/*': ['./geo/**'],
   },
   typescript: {
     ignoreBuildErrors: true,

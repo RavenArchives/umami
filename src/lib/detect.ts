@@ -3,13 +3,12 @@ import { browserName, detectOS } from 'detect-browser';
 import ipaddr from 'ipaddr.js';
 import isLocalhost from 'is-localhost-ip';
 import maxmind from 'maxmind';
-// @ts-ignore - geoip-country ships no type declarations
-import geoip from 'geoip-country';
 import { UAParser } from 'ua-parser-js';
 import { getIpAddress, stripPort } from '@/lib/ip';
 import { safeDecodeURIComponent } from '@/lib/url';
 
 const MAXMIND = 'maxmind';
+const RAVEN_GEO = 'raven_geo';
 
 const PROVIDER_HEADERS = [
   // Umami custom headers (cloud mode only)
@@ -94,17 +93,24 @@ export async function getLocation(ip: string = '', headers: Headers, skipHeaders
     return null;
   }
 
-  // Offline country lookup on the resolved client IP. We run behind a Heroku
-  // proxy on Vercel: the provider headers below (x-vercel-ip-*) describe the
-  // proxy (always US) and build-geo is skipped on Vercel so no GeoLite2-City DB
-  // is bundled. Resolve the real IP first. geoip-country is ~8MB, country-only.
-  const geo = geoip.lookup(cleanIp);
-  if (geo?.country) {
-    return {
-      country: geo.country,
-      region: undefined,
-      city: undefined,
-    };
+  // Resolve the real client IP against our bundled GeoLite2-Country DB *before*
+  // the provider-header loop below. We run behind a Heroku proxy on Vercel, so
+  // the x-vercel-ip-* headers describe the proxy (always US); the vendored DB
+  // (committed under geo/, forced into the standalone bundle by next.config)
+  // gives the visitor's true country. maxmind is already a first-class dep.
+  try {
+    if (!globalThis[RAVEN_GEO]) {
+      globalThis[RAVEN_GEO] = await maxmind.open(
+        path.join(process.cwd(), 'geo', 'GeoLite2-Country.mmdb'),
+      );
+    }
+    const geoResult = globalThis[RAVEN_GEO]?.get(cleanIp);
+    const country = geoResult?.country?.iso_code ?? geoResult?.registered_country?.iso_code;
+    if (country) {
+      return { country, region: undefined, city: undefined };
+    }
+  } catch {
+    // Bundled DB missing/unreadable: fall through to the provider headers.
   }
 
   if (!skipHeaders && !process.env.SKIP_LOCATION_HEADERS) {
