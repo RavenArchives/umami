@@ -236,14 +236,15 @@ export default withNextIntl({
   },
   basePath,
   output: 'standalone',
-  // geoip-country reads its IP databases (.dat) from disk at runtime. Next's
-  // file tracer won't follow those fs reads into the standalone/Vercel bundle,
-  // so include them explicitly. pnpm keeps the real files under .pnpm/...; the
-  // second glob covers the node_modules/geoip-country symlink as a fallback.
+  // geoip-country reads its own package.json + .dat databases from disk at
+  // runtime. Mark it external so it's loaded from node_modules instead of
+  // bundled by Turbopack (which dropped its files), and force its whole
+  // directory into the standalone/Vercel bundle so those reads resolve.
+  serverExternalPackages: ['geoip-country'],
   outputFileTracingIncludes: {
     '**/*': [
-      './node_modules/.pnpm/geoip-country@*/node_modules/geoip-country/data/**',
-      './node_modules/geoip-country/data/**',
+      './node_modules/.pnpm/geoip-country@*/node_modules/geoip-country/**',
+      './node_modules/geoip-country/**',
     ],
   },
   typescript: {
