@@ -3,6 +3,8 @@ import { browserName, detectOS } from 'detect-browser';
 import ipaddr from 'ipaddr.js';
 import isLocalhost from 'is-localhost-ip';
 import maxmind from 'maxmind';
+// @ts-ignore - geoip-country ships no type declarations
+import geoip from 'geoip-country';
 import { UAParser } from 'ua-parser-js';
 import { getIpAddress, stripPort } from '@/lib/ip';
 import { safeDecodeURIComponent } from '@/lib/url';
@@ -90,6 +92,19 @@ export async function getLocation(ip: string = '', headers: Headers, skipHeaders
   // Ignore local or invalid ips
   if (!cleanIp || !ipaddr.isValid(cleanIp) || (await isLocalIp(cleanIp))) {
     return null;
+  }
+
+  // Offline country lookup on the resolved client IP. We run behind a Heroku
+  // proxy on Vercel: the provider headers below (x-vercel-ip-*) describe the
+  // proxy (always US) and build-geo is skipped on Vercel so no GeoLite2-City DB
+  // is bundled. Resolve the real IP first. geoip-country is ~8MB, country-only.
+  const geo = geoip.lookup(cleanIp);
+  if (geo?.country) {
+    return {
+      country: geo.country,
+      region: undefined,
+      city: undefined,
+    };
   }
 
   if (!skipHeaders && !process.env.SKIP_LOCATION_HEADERS) {
